@@ -1,0 +1,63 @@
+#include "fmt/format.h"
+#include "fmt/ranges.h"
+
+#include "graph.h"
+#include "importer.h"
+using namespace dcsr;
+
+int main() {
+    [[maybe_unused]] Config config_tiny{
+        .auto_extend = true,
+        .buffer_size = 64,
+        .init_vertex_count = 0,
+        .partition_size = 64,
+    };
+
+    [[maybe_unused]] Config config_small{
+        .auto_extend = true,
+        .buffer_size = 1024,
+        .init_vertex_count = 0,
+        .partition_size = 1024,
+    };
+
+    [[maybe_unused]] Config config_medium{
+        .auto_extend = true,
+        .buffer_size = 1024 * 1024,
+        .init_vertex_count = 4 * 1024 * 1024,
+        .partition_size = 1024 * 1024,
+    };
+
+    [[maybe_unused]] Config config_large{
+        .auto_extend = true,
+        .buffer_size = 8 * 1024 * 1024,
+        .init_vertex_count = 1024 * 1024 * 1024,
+        .partition_size = 128 * 1024 * 1024,
+    };
+
+    SetAffinityThisThread(0);
+
+    // Config c = config_tiny;
+    // Config c = config_small;
+    Config c = config_medium;
+    // Config c = config_large;
+
+    auto g = std::make_unique<Graph<void>>("./data/tmpdb2", c);
+
+    // fs::path dataset = "./data/toy_graphs/selfloop64-32/edgelist.bin";
+    // fs::path dataset = "./data/toy_graphs/selfloop1024-32/edgelist.bin";
+    fs::path dataset = "./data/livejournal-bin/livejournal.bin";
+    // fs::path dataset = "./data/Kron30-24/block-00.bin";
+    
+
+    ScanLargeFile<RawEdge64<void>, 8*1024*1024>(dataset, [&](RawEdge64<void> e) {
+        g->AddEdge(e);
+    });
+
+
+    auto v = g->MakeVersion();
+    g->WaitVersion(v);
+
+    g->ExportToCSR64("./data/csr/livejournal.csr64");
+
+    return 0;
+}

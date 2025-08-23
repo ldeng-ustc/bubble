@@ -1,0 +1,201 @@
+#include "fmt/format.h"
+#include "fmt/ranges.h"
+
+#include "graph.h"
+#include "importer.h"
+using namespace dcsr;
+
+
+using MemGraph = std::vector<std::vector<VID>>;
+std::pair<MemGraph, MemGraph> LoadInMemory(fs::path dataset) {
+    MemGraph graph_in;
+    MemGraph graph_out;
+    auto [rt, pt] = ScanLargeFile<RawEdge64<void>, 8*1024*1024>(dataset, [&](RawEdge64<void> e) {
+        VID vid_max = std::max(e.from, e.to);
+        if(vid_max >= graph_in.size()) {
+            graph_in.resize(vid_max + 1);
+            graph_out.resize(vid_max + 1);
+        }
+        graph_out[e.from].push_back(e.to);
+        graph_in[e.to].push_back(e.from);
+    });
+    fmt::println("Read time: {:.2f}s", rt);
+    fmt::println("Process time: {:.2f}s", pt);
+    return std::make_pair(std::move(graph_in), std::move(graph_out));
+}
+
+int main() {
+    [[maybe_unused]] Config config_tiny{
+        .auto_extend = true,
+        .buffer_size = 64,
+        .init_vertex_count = 0,
+        .partition_size = 64,
+    };
+
+    [[maybe_unused]] Config config_small{
+        .auto_extend = true,
+        .buffer_size = 1024,
+        .init_vertex_count = 0,
+        .partition_size = 1024,
+    };
+
+    [[maybe_unused]] Config config_medium{
+        .auto_extend = false,
+        .buffer_size = 1024 * 1024 * 1024,
+        .init_vertex_count = 5 * 1024 * 1024,
+        .partition_size = 256 * 1024,
+    };
+
+    [[maybe_unused]] Config config_large{
+        .auto_extend = false,
+        .buffer_size = 128 * 1024 * 1024,
+        .init_vertex_count = 128 * 1024 * 1024,
+        .partition_size = 8 * 1024 * 1024,
+    };
+
+    [[maybe_unused]] Config config_exlarge{
+        .auto_extend = true,
+        .buffer_size = 8 * 1024 * 1024,
+        .init_vertex_count = 1024 * 1024 * 1024,
+        .partition_size = 128 * 1024 * 1024,
+    };
+
+    SetAffinityThisThread(0);
+
+    // Config c = config_tiny;
+    // Config c = config_small;
+    // Config c = config_medium;
+    Config c = config_large;
+    // Config c = config_exlarge;
+
+    auto g = std::make_unique<Graph<void>>("./data/tmpdb2", c);
+
+    // fs::path dataset = "./data/toy_graphs/selfloop64-32/edgelist.bin";
+    // fs::path dataset = "./data/toy_graphs/selfloop1024-32/edgelist.bin";
+    // fs::path dataset = "./data/bin/shuffle/livejournal/livejournal-shuffled.bin";
+    fs::path dataset = "./data/bin/shuffle/friendster/friendster-shuffled.bin";
+    // fs::path dataset = "./data/Kron30-16/block-00.bin";
+    
+    auto memgraph = LoadInMemory(dataset);
+    auto out_degree = std::vector<size_t>(c.init_vertex_count, 0);
+
+    auto [rt, pt] = ScanLargeFile<RawEdge64<void>, 8*1024*1024>(dataset, [&](RawEdge64<void> e) {
+        if(e.from >= out_degree.size()) {
+            out_degree.resize(e.from + 1, 0);
+        }
+        out_degree[e.from]++;
+        g->AddEdge(e);
+    });
+
+    size_t total_edges = std::accumulate(out_degree.begin(), out_degree.end(), 0);
+    double speed_process = total_edges / pt / 1e6;
+    double speed_end2end = total_edges / (rt + pt) / 1e6;
+    fmt::println("Imported {} edges", total_edges);
+    fmt::println("Speed (process): {:.2f}M edges/s;  Speed (end2end): {:.2f}M edges/s", speed_process, speed_end2end);
+
+    fmt::println("early exit");
+    return 0;
+
+
+    auto vertex_count = g->VertexCount();
+
+    fmt::println("Vertex count: {}", vertex_count);
+    fmt::println("Real vertex count: {}", memgraph.first.size());
+    dcsr_assert(vertex_count == memgraph.first.size(), "Vertex count mismatch");
+
+
+    // auto& mgraph_in = memgraph.first;
+    auto& mgraph_out = memgraph.second;
+
+
+    fmt::println("One way graph check");
+    size_t get_edges = 0;
+    auto ver = g->MakeVersion();
+    for(size_t i=0; i<vertex_count; i++) {
+        auto res = g->GetNeighbors(i, ver);
+        get_edges += res.size();
+        std::span<VID> adj;
+        if(mgraph_out[i].size() > 0) {
+            adj = mgraph_out[i];
+        } else {
+            adj = std::span<VID>();
+        }
+
+        bool ok = true;
+        if(res.size() != adj.size()) {
+            ok = false;
+        }
+
+        for(size_t j=0; j<adj.size(); j++) {
+            if(res[j].vid != adj[j]) {
+                ok = false;
+                break;
+            }
+        }
+
+        if(!ok) {
+            fmt::println("Graph Vertex {} inconsistent", i);
+            fmt::println("result:   \n{:s}", fmt::join(res, ", "));
+            fmt::println("expected: \n{}", adj);
+            fmt::println("size: {} (expected: {})", res.size(), adj.size());
+            exit(-1);
+        }
+
+    }
+    fmt::println("Get edges: {}", get_edges);
+    if(get_edges != total_edges) {
+        fmt::println("Get edges mismatch: {} (expected: {})", get_edges, total_edges);
+        exit(-1);
+    }
+
+
+    fmt::println("Two way graph check");
+    auto tg = std::make_unique<TGraph<void>>("./data/tmpdb/", c);
+    std::tie(rt, pt) = ScanLargeFile<RawEdge64<void>, 8*1024*1024>(dataset, [&](RawEdge64<void> e) {
+        tg->AddEdge(e);
+    });
+    
+    get_edges = 0;
+    auto tver = tg->MakeVersion();
+    for(size_t i=0; i<vertex_count; i++) {
+        auto res_out = tg->GetNeighborsOut(i, tver);
+        get_edges += res_out.size();
+        std::span<VID> adj;
+        if(mgraph_out[i].size() > 0) {
+            adj = mgraph_out[i];
+        } else {
+            adj = std::span<VID>();
+        }
+
+        bool ok = true;
+        if(res_out.size() != adj.size()) {
+            ok = false;
+        }
+
+        for(size_t j=0; j<adj.size(); j++) {
+            if(res_out[j].vid != adj[j]) {
+                ok = false;
+                break;
+            }
+        }
+
+        if(!ok) {
+            fmt::println("Vertex {} inconsistent", i);
+            fmt::println("result:   \n{:s}", fmt::join(res_out, ", "));
+            fmt::println("expected: \n{}", adj);
+            fmt::println("size: {} (expected: {})", res_out.size(), adj.size());
+            exit(-1);
+        }
+
+    }
+    fmt::println("Get edges: {}", get_edges);
+    if(get_edges != total_edges) {
+        fmt::println("Get edges mismatch: {} (expected: {})", get_edges, total_edges);
+        exit(-1);
+    }
+
+    fmt::println("Read time: {:.2f}s", rt);
+    fmt::println("Process time: {:.2f}s", pt);
+    fmt::println("total_edges: {}", total_edges);
+    return 0;
+}

@@ -1,0 +1,20 @@
+# Directories
+/bin/
+/tmp/
+/build/
+/cpm_cache/
+/data/
+/dataset/
+/figs/
+__pycache__/
+
+# Links
+/data
+/dataset
+/boost
+/related_works
+
+# Files
+/perf.data
+/perf.data.old
+*.ipynb

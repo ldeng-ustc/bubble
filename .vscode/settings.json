@@ -1,0 +1,8 @@
+{
+    "code-runner.executorMap": {
+        "cpp": "cd $workspaceRoot && cmake -S all -B build && cmake --build build -j && ./build/`realpath -s --relative-to=$workspaceRoot $dir`/$fileNameWithoutExt",
+    },
+    "cmake.autoSelectActiveFolder": false,
+    "cmake.sourceDirectory": "${workspaceFolder}/all",
+    "C_Cpp.errorSquiggles": "disabled"
+}
