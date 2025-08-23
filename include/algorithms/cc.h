@@ -347,6 +347,7 @@ void FinalizeSimple(GraphType* graph, std::span<NodeID> comp_span, NodeID max_co
     (void) neighbor_rounds;
 
     size_t VBATCH = std::min<size_t>(VBATCH_SET, std::bit_floor(v_count / 2048));
+    VBATCH = std::max<size_t>(VBATCH, 1024);
 
     // Directed graph, so we need to process both directions
     #pragma omp parallel for schedule(dynamic, VBATCH)
