@@ -1,27 +1,20 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[6]:
-
-
 import os
 import meta
 import datasets
 from parse_output import get_latest_files, extract_multiple_data, get_data_from_dir_custom
 
-
+# Load experimental data
 exp_dir = os.path.join(meta.EXPERIMENTS_DIR, 'scalability/raw')
-latest_n = 10
+latest_n = 1
 latest_dirs = get_latest_files(exp_dir, latest_n)
 
 exp_data_list = []
 for dir in latest_dirs:
     exp_data = get_data_from_dir_custom(dir, ['work', 'dataset', 'threads'], logging=False)
     exp_data_list.append(exp_data)
-
-
-# In[7]:
-
 
 def get_scalability_df(exp_data_list, dataset):
     df = extract_multiple_data(exp_data_list, row='threads', col='work', value='ingest', condition=lambda x: x['dataset'] == dataset)
@@ -46,10 +39,6 @@ df_norm_friendster = df_band_friendster / df_band_friendster.min()
 print('Twitter:', df_norm_twitter, sep='\n')
 print('Friendster:', df_norm_friendster, sep='\n')
 
-
-# In[8]:
-
-
 def plot_lines(
         df, ax,
         colors: str|list = None,
@@ -60,8 +49,7 @@ def plot_lines(
         zorder=None,
         **kwargs
     ):
-    """在ax上绘制折线图，每条线为df中的一列。
-    """
+    """Plot line charts on ax, each line represents a column in df."""
     from itertools import cycle
 
     def cycle_or_repeat(list_or_elem):
@@ -90,13 +78,9 @@ def plot_lines(
                 linestyle=next(linestyle_list),
                 linewidth=next(linewidth_list),
                 zorder=next(zorder_list),
-                clip_on=False,      # 允许线条超出坐标轴范围
+                clip_on=False,      # Allow lines to extend beyond axis range
                 **kwargs
         )
-
-
-# In[9]:
-
 
 import matplotlib as mpl
 from matplotlib.colors import to_hex
@@ -107,10 +91,6 @@ colds = cmap_blues([1.0, 0.7, 0.2])
 hots = cmap_oranges([0.5, 0.8])
 colors = list(colds) + list(hots)
 mpl.colors.ListedColormap(colors, name='custom_cmap', N=len(colors))
-
-
-# In[10]:
-
 
 import matplotlib.pyplot as plt
 
@@ -127,7 +107,7 @@ def plot_scalability(df_band, fig_size=(2.5, 2)):
     ax.set_xlim(df_band.index[0], df_band.index[-1])
     ax.set_ylim(0, 115)
 
-    # 双侧y轴
+    # Set y axis ticks on both sides
     ax.yaxis.set_ticks_position('both')
     ax.tick_params(axis='y', labelleft=True, labelright=True, zorder=10)
 
@@ -135,9 +115,11 @@ def plot_scalability(df_band, fig_size=(2.5, 2)):
     ax.set_ylabel('Throughput (MEPS)', labelpad=-0.7)
     return fig, ax
 
+# Generate plots
 fig_twitter, ax_twitter = plot_scalability(df_band_twitter)
 fig_friendster, ax_friendster = plot_scalability(df_band_friendster)
 
+# Create legend figure
 fig_legend, ax_legend = plot_scalability(df_band_twitter, fig_size=(3, 0.5))
 ax_legend.axis('off')
 
@@ -150,6 +132,7 @@ for artist in ax_legend.get_children():
 
 fig_legend.tight_layout()
 
+# Save figures
 fig_twitter.savefig(meta.PROJECT_DIR + '/figs/scale_tw.pdf', bbox_inches='tight', pad_inches=0)
 fig_friendster.savefig(meta.PROJECT_DIR + '/figs/scale_fr.pdf', bbox_inches='tight', pad_inches=0)
 fig_legend.savefig(meta.PROJECT_DIR + '/figs/scale_legend.pdf', bbox_inches='tight', pad_inches=0)
