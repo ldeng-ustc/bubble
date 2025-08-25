@@ -105,7 +105,10 @@ def plot_scalability(df_band, fig_size=(2.5, 2)):
     ax.tick_params(axis='x', which='minor', bottom=False)
     ax.set_xticklabels(df_band.index, minor=False)
     ax.set_xlim(df_band.index[0], df_band.index[-1])
-    ax.set_ylim(0, 115)
+
+    maxy = df_band.max().max()
+    maxy = ((maxy // 10) + 1) * 10
+    ax.set_ylim(0, maxy)
 
     # Set y axis ticks on both sides
     ax.yaxis.set_ticks_position('both')
